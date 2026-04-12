@@ -165,7 +165,7 @@ async def get_public_recipes(request: Request, page:int = 1, max_per_page:int = 
     offset = (page - 1) * max_per_page
 
     cursor.execute("""
-    SELECT recipes.id, title, description, ingredients, instructions, image_file_path, user_id, users.username 
+    SELECT recipes.id, title, description, ingredients, instructions, image_file_path, user_id, users.username, is_public
     FROM recipes
     JOIN users ON recipes.user_id = users.id
     WHERE recipes.is_public = 1 
@@ -190,6 +190,7 @@ async def get_public_recipes(request: Request, page:int = 1, max_per_page:int = 
             "description": row[2],
             "ingredients": row[3],
             "instructions": row[4],
+            "public": bool(row[8]),
             **({"image_url": f"{base_url}{row[5]}"} if row[5] else {}),
             "user": {
                 "user_id": row[6],
@@ -198,6 +199,42 @@ async def get_public_recipes(request: Request, page:int = 1, max_per_page:int = 
 
         } for row in rows ]
     }
+
+@app.get("/recipes/{recipe_id}")
+async def get_recipe(recipe_id: int, request: Request, key_info = Depends(verify_api_key)):
+    user_id = key_info[0]
+
+    cursor.execute("""
+    SELECT recipes.id, title, description, ingredients, instructions, image_file_path, user_id, users.username, is_public
+    FROM recipes
+    JOIN users ON recipes.user_id = users.id
+    WHERE recipes.id = ?
+    """, (recipe_id,))
+
+    row = cursor.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    
+    if not row[8] and row[6] != user_id:
+        raise HTTPException(status_code=403, detail="This recipe is private")
+    
+    base_url = str(request.base_url)
+
+    return {
+        "id": row[0],
+        "title": row[1],
+        "description": row[2],
+        "ingredients": row[3],
+        "instructions": row[4],
+        "public": bool(row[8]),
+        **({"image_url": f"{base_url}{row[5]}"} if row[5] else {}),
+        "user": {
+            "user_id": row[6],
+            "username": row[7]
+        }
+    }
+    
 
 @app.patch("/user/name")
 @limiter.limit("2/hour")
