@@ -209,15 +209,24 @@ async def get_public_recipes(request: Request, page:int = 1, max_per_page:int = 
     }
 
 @app.get("/recipes/me")
-async def get_my_recipes(request: Request, key_info = Depends(verify_api_key)):
+async def get_my_recipes(request: Request, key_info = Depends(verify_api_key), page:int = 1, max_per_page:int = 50):
     user_id = key_info[0]
+
+    if max_per_page > 200 or max_per_page <= 0:
+        max_per_page = 50
+    if page <= 0:
+        page = 1
+    
+    offset = (page - 1) * max_per_page
 
     cursor.execute("""
     SELECT recipes.id, title, description, ingredients, instructions, image_file_path, user_id, users.username, is_public
     FROM recipes
     JOIN users ON recipes.user_id = users.id
     WHERE user_id = ?
-    """, (user_id,))
+    ORDER BY recipes.id DESC
+    LIMIT ? OFFSET ?
+    """, (user_id, max_per_page, offset))
     
     rows = cursor.fetchall()
 
@@ -236,6 +245,105 @@ async def get_my_recipes(request: Request, key_info = Depends(verify_api_key)):
             "user": {
                 "user_id": row[6],
                 "username": row[7]
+            }
+
+        } for row in rows ]
+    }
+
+@app.get("/recipes/search")
+async def search_recipes(query: str, request: Request, page:int = 1, max_per_page:int = 50):
+    search = f"%{query}%"
+
+    if max_per_page > 200 or max_per_page <= 0:
+        max_per_page = 50
+    if page <= 0:
+        page = 1
+    
+    offset = (page - 1) * max_per_page
+
+    cursor.execute("""
+    SELECT recipes.id, title, description, ingredients, instructions, image_file_path, user_id, users.username, is_public
+    FROM recipes
+    JOIN users ON recipes.user_id = users.id
+    WHERE recipes.is_public = 1 
+    AND ( LOWER(title) LIKE LOWER(?) OR LOWER(ingredients) LIKE LOWER(?) )
+    ORDER BY recipes.id DESC
+    LIMIT ? OFFSET ?
+    """, (search, search, max_per_page, offset))
+
+    rows = cursor.fetchall()
+
+    cursor.execute("SELECT COUNT(*) FROM recipes WHERE is_public = 1 AND ( LOWER(title) LIKE LOWER(?) OR LOWER(ingredients) LIKE LOWER(?) )", (search, search))
+    total = cursor.fetchone()[0]
+
+    base_url = str(request.base_url)
+
+    return {
+        "page": page,
+        "count": len(rows),
+        "total": total,
+        "recipes": [{
+            "id": row[0],
+            "title": row[1],
+            "description": row[2],
+            "ingredients": row[3],
+            "instructions": row[4],
+            "public": bool(row[8]),
+            **({"image_url": f"{base_url}{row[5]}"} if row[5] else {}),
+            "user": {
+                "user_id": row[6],
+                "username": row[7]
+            }
+
+        } for row in rows ]
+    }
+
+@app.get("/recipes/user/{user_id}")
+async def get_user_public_recipes(user_id: int, request: Request, page: int = 1, max_per_page:int = 50):
+    if max_per_page > 200 or max_per_page <= 0:
+        max_per_page = 50
+    if page <= 0:
+        page = 1
+    
+    offset = (page - 1) * max_per_page
+
+    cursor.execute("SELECT username FROM users WHERE id = ?", (user_id,))
+    user = cursor.fetchone()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    username = user[0]
+
+    cursor.execute("""
+    SELECT id, title, description, ingredients, instructions, image_file_path
+    FROM recipes WHERE user_id = ? AND is_public = 1
+    ORDER BY id DESC
+    LIMIT ? OFFSET ?
+    """, (user_id, max_per_page, offset))
+
+    rows = cursor.fetchall()
+
+    cursor.execute("SELECT COUNT(*) FROM recipes WHERE user_id = ? AND is_public = 1", (user_id,))
+    total = cursor.fetchone()[0]
+
+    base_url = str(request.base_url)
+
+    return {
+        "page": page,
+        "count": len(rows),
+        "total": total,
+        "recipes": [{
+            "id": row[0],
+            "title": row[1],
+            "description": row[2],
+            "ingredients": row[3],
+            "instructions": row[4],
+            "public": True,
+            **({"image_url": f"{base_url}{row[5]}"} if row[5] else {}),
+            "user": {
+                "user_id": user_id,
+                "username": username
             }
 
         } for row in rows ]
@@ -357,54 +465,6 @@ async def update_recipe(request: Request, background_tasks: BackgroundTasks, rec
         background_tasks.add_task(process_image, recipe_id, body.image_url)
     
     return {"message": "Recipe updated"}
-
-@app.get("/recipes/search")
-async def search_recipes(query: str, request: Request, page:int = 1, max_per_page:int = 50):
-    search = f"%{query}%"
-
-    if max_per_page > 200 or max_per_page <= 0:
-        max_per_page = 50
-    if page <= 0:
-        page = 1
-    
-    offset = (page - 1) * max_per_page
-
-    cursor.execute("""
-    SELECT recipes.id, title, description, ingredients, instructions, image_file_path, user_id, users.username, is_public
-    FROM recipes
-    JOIN users ON recipes.user_id = users.id
-    WHERE recipes.is_public = 1 
-    AND ( LOWER(title) LIKE LOWER(?) OR LOWER(ingredients) LIKE LOWER(?) )
-    ORDER BY recipes.id DESC
-    LIMIT ? OFFSET ?
-    """, (search, search, max_per_page, offset))
-
-    rows = cursor.fetchall()
-
-    cursor.execute("SELECT COUNT(*) FROM recipes WHERE is_public = 1 AND ( LOWER(title) LIKE LOWER(?) OR LOWER(ingredients) LIKE LOWER(?) )", (search, search))
-    total = cursor.fetchone()[0]
-
-    base_url = str(request.base_url)
-
-    return {
-        "page": page,
-        "count": len(rows),
-        "total": total,
-        "recipes": [{
-            "id": row[0],
-            "title": row[1],
-            "description": row[2],
-            "ingredients": row[3],
-            "instructions": row[4],
-            "public": bool(row[8]),
-            **({"image_url": f"{base_url}{row[5]}"} if row[5] else {}),
-            "user": {
-                "user_id": row[6],
-                "username": row[7]
-            }
-
-        } for row in rows ]
-    }
 
 @app.put("/user/name")
 @limiter.limit("2/hour")
