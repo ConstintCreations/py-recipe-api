@@ -60,6 +60,14 @@ class Recipe(BaseModel):
 class UpdateName(BaseModel):
     name: str
 
+class RecipePatch(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    ingredients: str | None = None
+    instructions: str | None = None
+    is_public: bool | None = None
+    image_url: str | None = None
+
 def create_api_key(username: str) -> str:
     try:
         key = secrets.token_hex(16)
@@ -201,7 +209,7 @@ async def get_public_recipes(request: Request, page:int = 1, max_per_page:int = 
     }
 
 @app.get("/recipes/me")
-async def get_recipe(request: Request, key_info = Depends(verify_api_key)):
+async def get_my_recipes(request: Request, key_info = Depends(verify_api_key)):
     user_id = key_info[0]
 
     cursor.execute("""
@@ -269,7 +277,7 @@ async def get_recipe(recipe_id: int, request: Request, key_info = Depends(verify
     }
 
 @app.delete("/recipes/{recipe_id}")
-async def get_recipe(recipe_id: int, key_info = Depends(verify_api_key)):
+async def delete_recipe(recipe_id: int, key_info = Depends(verify_api_key)):
     user_id = key_info[0]
 
     cursor.execute("SELECT user_id FROM recipes WHERE id = ?", (recipe_id,))
@@ -290,7 +298,67 @@ async def get_recipe(recipe_id: int, key_info = Depends(verify_api_key)):
 
     return {"message": "Recipe deleted"}
 
-@app.patch("/user/name")
+@app.patch("/recipes/{recipe_id}")
+@limiter.limit("5/minute")
+async def update_recipe(request: Request, background_tasks: BackgroundTasks, recipe_id: int, body:RecipePatch, key_info = Depends(verify_api_key)):
+    user_id = key_info[0]
+
+    cursor.execute("SELECT user_id FROM recipes WHERE id = ?", (recipe_id,))
+
+    row = cursor.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    
+    if row[0] != user_id:
+        raise HTTPException(status_code=403, detail="This recipe is not yours")
+    
+    updates = []
+    values = []
+    image_updated = False
+
+    if body.title is not None:
+        updates.append("title = ?")
+        values.append(body.title)
+    if body.description is not None:
+        updates.append("description = ?")
+        values.append(body.description)
+    if body.ingredients is not None:
+        updates.append("ingredients = ?")
+        values.append(body.ingredients)
+    if body.instructions is not None:
+        updates.append("instructions = ?")
+        values.append(body.instructions)
+    if body.is_public is not None:
+        updates.append("is_public = ?")
+        values.append(int(body.is_public))
+    if body.image_url is not None:
+        updates.append("image_url = ?")
+        values.append(body.image_url)
+        image_updated = True
+
+
+    if not updates:
+        return {"message": "Nothing to update"}
+    
+    values.append(recipe_id)
+
+    query = f"""
+    UPDATE recipes 
+    SET {", ".join(updates)}
+    WHERE id = ?
+    """
+
+    cursor.execute(query, values)
+
+    conn.commit()
+
+    if image_updated:
+        background_tasks.add_task(process_image, recipe_id, body.image_url)
+    
+    return {"message": "Recipe updated"}
+
+@app.put("/user/name")
 @limiter.limit("2/hour")
 async def change_name(request: Request, body:UpdateName, key_info = Depends(verify_api_key)):
     user_id = key_info[0]
