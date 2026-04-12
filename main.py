@@ -70,6 +70,12 @@ async def verify_api_key(x_api_key: str = Header()):
         raise HTTPException(status_code=401, detail="Invalid API key")
     return result
 
+def get_api_key(request: Request) -> str:
+    return request.headers.get("x-api-key", "unknown")
+
+limiter = Limiter(key_func=get_api_key)
+app.state.limiter = limiter
+
 def process_image(recipe_id: int, image_url: str):
     try:
         print(f"Processing Image at ID {recipe_id}")
@@ -101,13 +107,21 @@ def process_image(recipe_id: int, image_url: str):
     
 app.mount("/images", StaticFiles(directory="images"), name="images")
 
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Rate limit exceeded. Try again later!"}
+    )
+
 @app.post("/register")
 async def register(body: RegisterBody):
     key = create_api_key(body.name)
     return {"api_key": key, "message": "This is your API key. Save it somewhere! You won't be able to see it again."}
 
 @app.post("/recipes")
-async def create_recipe(body: Recipe, background_tasks: BackgroundTasks, key_info = Depends(verify_api_key)):
+@limiter.limit("5/minute")
+async def create_recipe(request: Request, body: Recipe, background_tasks: BackgroundTasks, key_info = Depends(verify_api_key)):
 
     user_id = key_info[0]
 
@@ -149,7 +163,7 @@ async def get_public_recipes(request: Request, page:int = 1, max_per_page:int = 
     FROM recipes
     JOIN users ON recipes.user_id = users.id
     WHERE recipes.is_public = 1 
-    ORDER BY recipes.id ASC
+    ORDER BY recipes.id DESC
     LIMIT ? OFFSET ?
     """, (max_per_page, offset))
 
