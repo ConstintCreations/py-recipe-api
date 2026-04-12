@@ -358,6 +358,54 @@ async def update_recipe(request: Request, background_tasks: BackgroundTasks, rec
     
     return {"message": "Recipe updated"}
 
+@app.get("/recipes/search")
+async def search_recipes(query: str, request: Request, page:int = 1, max_per_page:int = 50):
+    search = f"%{query}%"
+
+    if max_per_page > 200 or max_per_page <= 0:
+        max_per_page = 50
+    if page <= 0:
+        page = 1
+    
+    offset = (page - 1) * max_per_page
+
+    cursor.execute("""
+    SELECT recipes.id, title, description, ingredients, instructions, image_file_path, user_id, users.username, is_public
+    FROM recipes
+    JOIN users ON recipes.user_id = users.id
+    WHERE recipes.is_public = 1 
+    AND ( LOWER(title) LIKE LOWER(?) OR LOWER(ingredients) LIKE LOWER(?) )
+    ORDER BY recipes.id DESC
+    LIMIT ? OFFSET ?
+    """, (search, search, max_per_page, offset))
+
+    rows = cursor.fetchall()
+
+    cursor.execute("SELECT COUNT(*) FROM recipes WHERE is_public = 1 AND ( LOWER(title) LIKE LOWER(?) OR LOWER(ingredients) LIKE LOWER(?) )", (search, search))
+    total = cursor.fetchone()[0]
+
+    base_url = str(request.base_url)
+
+    return {
+        "page": page,
+        "count": len(rows),
+        "total": total,
+        "recipes": [{
+            "id": row[0],
+            "title": row[1],
+            "description": row[2],
+            "ingredients": row[3],
+            "instructions": row[4],
+            "public": bool(row[8]),
+            **({"image_url": f"{base_url}{row[5]}"} if row[5] else {}),
+            "user": {
+                "user_id": row[6],
+                "username": row[7]
+            }
+
+        } for row in rows ]
+    }
+
 @app.put("/user/name")
 @limiter.limit("2/hour")
 async def change_name(request: Request, body:UpdateName, key_info = Depends(verify_api_key)):
