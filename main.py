@@ -1,10 +1,14 @@
-from fastapi import FastAPI, HTTPException, Depends, Header, Request
+from fastapi import FastAPI, HTTPException, Depends, Header, Request, BackgroundTasks
 from pydantic import BaseModel
 import secrets
 import sqlite3
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from fastapi.responses import JSONResponse
+import requests
+from PIL import Image
+import os
+from io import BytesIO
 
 app = FastAPI()
 
@@ -29,6 +33,7 @@ cursor.execute("""
         description TEXT,
         ingredients TEXT NOT NULL,
         image_url TEXT,
+        image_file_path TEXT,
         user_id INTEGER NOT NULL,
         is_public INTEGER NOT NULL DEFAULT 1,
 
@@ -62,13 +67,42 @@ async def verify_api_key(x_api_key: str = Header()):
         raise HTTPException(status_code=401, detail="Invalid API key")
     return result
 
+def process_image(recipe_id: int, image_url: str):
+    try:
+        print(f"Processing Image at ID {recipe_id}")
+        connBg = sqlite3.connect("recipes.db")
+        cursorBg = connBg.cursor()
+
+        response = requests.get(image_url, timeout=10)
+
+        if response.status_code != 200 or "image" not in response.headers.get("content-type", ""):
+            return
+        
+        image = Image.open(BytesIO(response.content))
+        
+        image.thumbnail((1000, 1000))
+
+        os.makedirs("images", exist_ok=True)
+        image = image.convert("RGB")
+        image_file_path = f"images/image_{recipe_id}.webp"
+        image.save(image_file_path, "WEBP", quality=75)
+
+        cursorBg.execute("UPDATE recipes SET image_file_path = ? WHERE id = ?", (image_file_path, recipe_id))
+
+        connBg.commit()
+        connBg.close()
+        print(f"Image Processed at ID {recipe_id}")
+    except Exception as e:
+        print("Image Processing Failed: ", e)
+        return
+
 @app.post("/register")
 async def register(body: RegisterBody):
     key = create_api_key(body.name)
     return {"api_key": key, "message": "This is your API key. Save it somewhere! You won't be able to see it again."}
 
 @app.post("/recipes")
-async def create_recipe(body: Recipe, key_info = Depends(verify_api_key)):
+async def create_recipe(body: Recipe, background_tasks: BackgroundTasks, key_info = Depends(verify_api_key)):
 
     user_id = key_info[0]
 
@@ -89,5 +123,8 @@ async def create_recipe(body: Recipe, key_info = Depends(verify_api_key)):
     conn.commit()
 
     recipe_id = cursor.lastrowid
+
+    if body.image_url:
+        background_tasks.add_task(process_image, recipe_id, body.image_url)
 
     return {"message": "Recipe Created!", "recipe_id": recipe_id}
