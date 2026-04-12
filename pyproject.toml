@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "Py-Recipe-API"
+name = "Py_Recipe_API"
 version = "0.0.1"
 description = "Py Recipe API is an API for creating and managing recipes"
 authors = [
@@ -32,7 +32,7 @@ classifiers = [
 ]
 
 [project.scripts]
-py-recipe-api = "py-recipe-api.main:main"
+py_recipe_api = "py_recipe_api.main:main"
 
 [project.urls]
 Homepage = "https://github.com/ConstintCreations/py-recipe-api"

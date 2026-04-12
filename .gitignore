@@ -2,4 +2,5 @@
 *.cfg
 *.db
 __pycache__
+dist
 images

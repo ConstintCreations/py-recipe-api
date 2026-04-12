@@ -487,7 +487,7 @@ async def delete_user(key_info = Depends(verify_api_key)):
 
 def main():
     import uvicorn
-    uvicorn.run("py-recipe-api.main:app", host="127.0.0.1", port=8000)
+    uvicorn.run("py_recipe_api.main:app", host="127.0.0.1", port=8000)
 
 if __name__ == "__main__":
     main()

@@ -6,11 +6,11 @@ This is a simple Recipe API made in Python for week 4 of [Resolution's](https://
 
 # Usage
 
-The package is on [TestPyPi](https://test.pypi.org/project/Py_Recipe_API/)
+The package is on [TestPyPi](https://test.pypi.org/project/Py-Recipe-API/)
 
 To install, you can use
 ```
-pip install -i https://test.pypi.org/simple/ Py_Recipe_API
+pip install -i https://test.pypi.org/simple/ Py-Recipe-API
 ```
 
 # Routes
