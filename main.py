@@ -5,6 +5,7 @@ import sqlite3
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 import requests
 from PIL import Image
 import os
@@ -32,6 +33,7 @@ cursor.execute("""
         title TEXT NOT NULL,
         description TEXT,
         ingredients TEXT NOT NULL,
+        instructions TEXT NOT NULL,
         image_url TEXT,
         image_file_path TEXT,
         user_id INTEGER NOT NULL,
@@ -51,6 +53,7 @@ class Recipe(BaseModel):
     title: str
     description: str | None = None
     ingredients: str
+    instructions: str
     is_public: bool = True
     image_url: str | None = None
 
@@ -95,6 +98,8 @@ def process_image(recipe_id: int, image_url: str):
     except Exception as e:
         print("Image Processing Failed: ", e)
         return
+    
+app.mount("/images", StaticFiles(directory="images"), name="images")
 
 @app.post("/register")
 async def register(body: RegisterBody):
@@ -109,11 +114,12 @@ async def create_recipe(body: Recipe, background_tasks: BackgroundTasks, key_inf
     public = int(body.is_public)
 
     cursor.execute(
-        "INSERT INTO recipes (title, description, ingredients, image_url, is_public, user_id) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO recipes (title, description, ingredients, instructions, image_url, is_public, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (
             body.title,
             body.description,
             body.ingredients,
+            body.instructions,
             body.image_url,
             public,
             user_id
@@ -128,3 +134,47 @@ async def create_recipe(body: Recipe, background_tasks: BackgroundTasks, key_inf
         background_tasks.add_task(process_image, recipe_id, body.image_url)
 
     return {"message": "Recipe Created!", "recipe_id": recipe_id}
+
+@app.get("/recipes/public")
+async def get_public_recipes(request: Request, page:int = 1, max_per_page:int = 50):
+    if max_per_page > 200 or max_per_page <= 0:
+        max_per_page = 50
+    if page <= 0:
+        page = 1
+    
+    offset = (page - 1) * max_per_page
+
+    cursor.execute("""
+    SELECT recipes.id, title, description, ingredients, instructions, image_file_path, user_id, users.username 
+    FROM recipes
+    JOIN users ON recipes.user_id = users.id
+    WHERE recipes.is_public = 1 
+    ORDER BY recipes.id ASC
+    LIMIT ? OFFSET ?
+    """, (max_per_page, offset))
+
+    rows = cursor.fetchall()
+
+    cursor.execute("SELECT COUNT(*) FROM recipes WHERE is_public = 1")
+    total = cursor.fetchone()[0]
+
+    base_url = str(request.base_url)
+
+    return {
+        "page": page,
+        "count": len(rows),
+        "total": total,
+        "recipes": [{
+            "id": row[0],
+            "title": row[1],
+            "description": row[2],
+            "ingredients": row[3],
+            "instructions": row[4],
+            **({"image_url": f"{base_url}{row[5]}"} if row[5] else {}),
+            "user": {
+                "user_id": row[6],
+                "username": row[7]
+            }
+
+        } for row in rows ]
+    }
