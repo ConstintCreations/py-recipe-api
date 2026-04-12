@@ -57,11 +57,17 @@ class Recipe(BaseModel):
     is_public: bool = True
     image_url: str | None = None
 
+class UpdateName(BaseModel):
+    name: str
+
 def create_api_key(username: str) -> str:
-    key = secrets.token_hex(16)
-    cursor.execute("INSERT INTO users (username, api_key) VALUES (?, ?)", (username, key))
-    conn.commit()
-    return key
+    try:
+        key = secrets.token_hex(16)
+        cursor.execute("INSERT INTO users (username, api_key) VALUES (?, ?)", (username, key))
+        conn.commit()
+        return key
+    except Exception:
+        raise HTTPException(status_code=400, detail="User already exists")
 
 async def verify_api_key(x_api_key: str = Header()):
     cursor.execute("SELECT * FROM users WHERE api_key = ?", (x_api_key,))
@@ -192,3 +198,22 @@ async def get_public_recipes(request: Request, page:int = 1, max_per_page:int = 
 
         } for row in rows ]
     }
+
+@app.patch("/user/name")
+@limiter.limit("2/hour")
+async def change_name(request: Request, body:UpdateName, key_info = Depends(verify_api_key)):
+    user_id = key_info[0]
+
+    cursor.execute("UPDATE users SET username = ? WHERE id = ?", (body.name, user_id))
+    conn.commit()
+
+    return {"message": f"Username updated to {body.name}"}
+
+@app.delete("/user")
+async def delete_user(key_info = Depends(verify_api_key)):
+    user_id = key_info[0]
+
+    cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+
+    return {"message": f"User Deleted"}
