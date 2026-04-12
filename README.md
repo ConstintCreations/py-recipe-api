@@ -2,6 +2,8 @@
 
 This is a simple Recipe API made in Python for week 4 of [Resolution's](https://resolution.hackclub.com/) Python Pathway
 
+![Py Recipe API Docs Image](attachments/Py-Recipe-API-Docs.png)
+
 # Usage
 
 The package is on [TestPyPi](https://test.pypi.org/project/Py_Recipe_API/)
