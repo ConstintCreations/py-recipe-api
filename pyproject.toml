@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "Py_Recipe_API"
-version = "0.0.3"
+version = "0.0.4"
 description = "Py Recipe API is an API for creating and managing recipes"
 authors = [
     {name="ConstintCreations"}
