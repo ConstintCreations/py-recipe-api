@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "Py_Recipe_API"
-version = "0.0.1"
+version = "0.0.3"
 description = "Py Recipe API is an API for creating and managing recipes"
 authors = [
     {name="ConstintCreations"}
@@ -13,7 +13,7 @@ readme = "README.md"
 license = "GPL-3.0-only"
 license-files = ["LICENSE"]
 
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 
 dependencies = [
     "fastapi[standard]", "slowapi", "requests", "pillow"

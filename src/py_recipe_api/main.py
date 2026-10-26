@@ -90,6 +90,8 @@ def get_api_key(request: Request) -> str:
 limiter = Limiter(key_func=get_api_key)
 app.state.limiter = limiter
 
+app.mount("/images", StaticFiles(directory="images"), name="images")
+
 def process_image(recipe_id: int, image_url: str):
     try:
         print(f"Processing Image at ID {recipe_id}")
@@ -118,8 +120,6 @@ def process_image(recipe_id: int, image_url: str):
     except Exception as e:
         print("Image Processing Failed: ", e)
         return
-    
-app.mount("/images", StaticFiles(directory="images"), name="images")
 
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
