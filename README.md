@@ -13,7 +13,7 @@ To install, you can use
 pip install -i https://test.pypi.org/simple/ Py-Recipe-API==0.0.3
 ```
 
-(If that doesn't work, try pip install --index-url https://test.pypi.org/simple --extra-index-url https://test.pypi.org/simple Py-Recipe-API==0.0.3)
+(If that doesn't work, try pip install --index-url https://test.pypi.org/simple --extra-index-url https://pypi.org/simple Py-Recipe-API==0.0.3)
 
 Make sure to add your Python scripts folder to your path, if it isn't already.
 
